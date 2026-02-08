@@ -40,88 +40,61 @@
 </div>
 
 <script>
-    const KEY = "AIzaSyBz-hjRxMNXjheqJb3d4_awpvYZw06ozjY";
-    let players = [];
-    let fields = [{name: "Points", weight: 1}];
-    let mode = "high";
+    const API_KEY = "AIzaSyBz-hjRxMNXjheqJb3d4_awpvYZw06ozjY";
+    
+    // Liste des modèles possibles par ordre de probabilité pour votre compte
+    const MODELS = [
+        "gemini-2.0-flash-exp", 
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b"
+    ];
 
-    async function askAI() {
-        const txt = document.getElementById('rules').value;
+    async function testIA() {
         const status = document.getElementById('status');
-        if(!txt) return;
+        const debug = document.getElementById('debug');
+        const game = document.getElementById('gameName').value || "Jeu standard";
 
-        status.innerText = "IA en cours...";
+        status.innerText = "⏳ Recherche du modèle compatible...";
+        debug.style.display = "none";
 
-        // Prompt ultra-court pour éviter les erreurs de lecture
-        const prompt = `Jeu: ${txt}. Retourne uniquement JSON: {"fields":[{"name":"points","weight":1}],"mode":"high"}`;
+        // On boucle sur les modèles pour trouver celui qui répond
+        for (let model of MODELS) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}`;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: `Réponds 'OK' pour le jeu ${game}` }] }]
+                    })
+                });
 
-        try {
-            // Utilisation de l'URL la plus compatible au monde
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${KEY}`;
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }]
-                })
-            });
+                const data = await response.json();
 
-            const data = await response.json();
-
-            // Affichage de l'erreur brute si ça échoue (pour débugger)
-            if(data.error) {
-                status.innerText = "❌ Erreur Google : " + data.error.message;
-                return;
+                if (response.ok) {
+                    status.innerText = `✅ RÉUSSITE avec le modèle : ${model}`;
+                    debug.style.display = "block";
+                    debug.style.background = "#d1fae5";
+                    debug.style.color = "#065f46";
+                    debug.innerText = "L'IA est connectée et opérationnelle !";
+                    return; // On arrête dès que ça marche
+                } else {
+                    console.log(`Modèle ${model} non trouvé, essai suivant...`);
+                }
+            } catch (err) {
+                console.error("Erreur réseau pour " + model);
             }
-
-            const rawText = data.candidates[0].content.parts[0].text;
-            const cleanJson = JSON.parse(rawText.match(/\{.*\}/s)[0]);
-            
-            fields = cleanJson.fields;
-            mode = cleanJson.mode || "high";
-            
-            status.innerText = "✅ IA connectée !";
-            render();
-        } catch (e) {
-            status.innerText = "❌ Bloqué par votre navigateur";
-            console.error("Détails :", e);
         }
-    }
 
-    // Gardez vos fonctions addP(), render() et calc() habituelles en dessous
-    function addP() {
-        const n = document.getElementById('pName').value;
-        if(n) { players.push({name: n, scores: {}}); document.getElementById('pName').value=""; render(); }
-    }
-    function render() {
-        const div = document.getElementById('list');
-        div.innerHTML = players.map((p, i) => `
-            <div class="player" style="border:1px solid #ddd; padding:10px; margin-top:5px; border-radius:8px;">
-                <b>${p.name}</b>
-                ${fields.map(f => `
-                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
-                        <small>${f.name}</small>
-                        <input type="number" onchange="players[${i}].scores['${f.name}']=Number(this.value)" style="width:60px;">
-                    </div>
-                `).join('')}
-            </div>
-        `).join('');
-    }
-    function calc() {
-        let best = null;
-        players.forEach(p => {
-            let total = 0;
-            fields.forEach(f => total += (p.scores[f.name] || 0) * f.weight);
-            p.total = total;
-            if(!best || (mode==="high" ? total > best.total : total < best.total)) best = p;
-        });
-        const w = document.getElementById('win');
-        w.style.display = "block";
-        w.innerText = "Gagnant : " + best.name + " (" + best.total + " pts)";
+        // Si on arrive ici, aucun modèle n'a fonctionné
+        status.innerText = "❌ Aucun modèle trouvé";
+        debug.style.display = "block";
+        debug.innerText = "Vérifiez dans AI Studio quel est le nom exact du modèle sélectionné dans votre interface (en haut à droite).";
     }
 </script>
 
 </body>
 
 </html>
+
