@@ -50,58 +50,54 @@
         const status = document.getElementById('status');
         if(!txt) return;
 
-        status.innerText = "Connexion à Google...";
+        status.innerText = "IA en cours...";
 
-        const prompt = `Réponds uniquement en JSON: {"fields":[{"name":"...","weight":1}],"mode":"high"}. Jeu: ${txt}`;
+        // Prompt ultra-court pour éviter les erreurs de lecture
+        const prompt = `Jeu: ${txt}. Retourne uniquement JSON: {"fields":[{"name":"points","weight":1}],"mode":"high"}`;
 
         try {
-            // Tentative avec le modèle Pro qui est souvent plus stable sur les nouvelles clés
-            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${KEY}`, {
+            // Utilisation de l'URL la plus compatible au monde
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${KEY}`;
+            
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
             });
 
-            const data = await resp.json();
-            
+            const data = await response.json();
+
+            // Affichage de l'erreur brute si ça échoue (pour débugger)
             if(data.error) {
-                // Si Pro échoue, on tente une dernière fois avec Flash mais une URL différente
-                console.log("Essai secours Flash...");
-                const resp2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${KEY}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-                });
-                const data2 = await resp2.json();
-                if(data2.error) throw new Error(data2.error.message);
-                apply(data2.candidates[0].content.parts[0].text);
-            } else {
-                apply(data.candidates[0].content.parts[0].text);
+                status.innerText = "❌ Erreur Google : " + data.error.message;
+                return;
             }
-            status.innerText = "✅ Jeu configuré !";
+
+            const rawText = data.candidates[0].content.parts[0].text;
+            const cleanJson = JSON.parse(rawText.match(/\{.*\}/s)[0]);
+            
+            fields = cleanJson.fields;
+            mode = cleanJson.mode || "high";
+            
+            status.innerText = "✅ IA connectée !";
+            render();
         } catch (e) {
-            status.innerText = "❌ Mode manuel (Erreur API)";
-            console.error(e);
+            status.innerText = "❌ Bloqué par votre navigateur";
+            console.error("Détails :", e);
         }
     }
 
-    function apply(jsonTxt) {
-        const match = jsonTxt.match(/\{.*\}/s);
-        const res = JSON.parse(match[0]);
-        fields = res.fields;
-        mode = res.mode || "high";
-        render();
-    }
-
+    // Gardez vos fonctions addP(), render() et calc() habituelles en dessous
     function addP() {
         const n = document.getElementById('pName').value;
         if(n) { players.push({name: n, scores: {}}); document.getElementById('pName').value=""; render(); }
     }
-
     function render() {
         const div = document.getElementById('list');
         div.innerHTML = players.map((p, i) => `
-            <div class="player">
+            <div class="player" style="border:1px solid #ddd; padding:10px; margin-top:5px; border-radius:8px;">
                 <b>${p.name}</b>
                 ${fields.map(f => `
                     <div style="display:flex; justify-content:space-between; margin-top:5px;">
@@ -112,7 +108,6 @@
             </div>
         `).join('');
     }
-
     function calc() {
         let best = null;
         players.forEach(p => {
@@ -128,4 +123,5 @@
 </script>
 
 </body>
+
 </html>
