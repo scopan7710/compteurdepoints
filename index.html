@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScoreMaster AI - Final Fix</title>
+    <style>
+        :root { --p: #4f46e5; --bg: #f3f4f6; }
+        body { font-family: sans-serif; background: var(--bg); padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-ai { background: #10b981; color: white; }
+        .btn-add { background: var(--p); color: white; }
+        .btn-calc { background: #1e293b; color: white; }
+        .player { background: #f9fafb; padding: 10px; border-radius: 8px; margin-top: 10px; border: 1px solid #eee; }
+        #status { text-align: center; font-size: 0.8rem; margin-top: 10px; color: #666; }
+    </style>
+</head>
+<body>
+
+<div style="max-width: 500px; margin: 0 auto;">
+    <h2 style="text-align:center;">🏆 ScoreMaster AI</h2>
+
+    <div class="card">
+        <textarea id="rules" rows="2" placeholder="Nom du jeu (ex: Scrabble)"></textarea>
+        <button class="btn-ai" onclick="askAI()">⚙️ Configurer avec l'IA</button>
+        <div id="status">Prêt.</div>
+    </div>
+
+    <div class="card">
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="pName" placeholder="Nom joueur" style="flex:1; padding:10px; border-radius:8px; border:1px solid #ddd;">
+            <button class="btn-add" onclick="addP()" style="width:50px; margin-top:0;">+</button>
+        </div>
+        <div id="list"></div>
+        <button class="btn-calc" onclick="calc()">Calculer le gagnant</button>
+        <div id="win" style="display:none; margin-top:15px; text-align:center; font-weight:bold; color:green;"></div>
+    </div>
+</div>
+
+<script>
+    const KEY = "AIzaSyBz-hjRxMNXjheqJb3d4_awpvYZw06ozjY";
+    let players = [];
+    let fields = [{name: "Points", weight: 1}];
+    let mode = "high";
+
+    async function askAI() {
+        const txt = document.getElementById('rules').value;
+        const status = document.getElementById('status');
+        if(!txt) return;
+
+        status.innerText = "Connexion à Google...";
+
+        const prompt = `Réponds uniquement en JSON: {"fields":[{"name":"...","weight":1}],"mode":"high"}. Jeu: ${txt}`;
+
+        try {
+            // Tentative avec le modèle Pro qui est souvent plus stable sur les nouvelles clés
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${KEY}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+
+            const data = await resp.json();
+            
+            if(data.error) {
+                // Si Pro échoue, on tente une dernière fois avec Flash mais une URL différente
+                console.log("Essai secours Flash...");
+                const resp2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${KEY}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                const data2 = await resp2.json();
+                if(data2.error) throw new Error(data2.error.message);
+                apply(data2.candidates[0].content.parts[0].text);
+            } else {
+                apply(data.candidates[0].content.parts[0].text);
+            }
+            status.innerText = "✅ Jeu configuré !";
+        } catch (e) {
+            status.innerText = "❌ Mode manuel (Erreur API)";
+            console.error(e);
+        }
+    }
+
+    function apply(jsonTxt) {
+        const match = jsonTxt.match(/\{.*\}/s);
+        const res = JSON.parse(match[0]);
+        fields = res.fields;
+        mode = res.mode || "high";
+        render();
+    }
+
+    function addP() {
+        const n = document.getElementById('pName').value;
+        if(n) { players.push({name: n, scores: {}}); document.getElementById('pName').value=""; render(); }
+    }
+
+    function render() {
+        const div = document.getElementById('list');
+        div.innerHTML = players.map((p, i) => `
+            <div class="player">
+                <b>${p.name}</b>
+                ${fields.map(f => `
+                    <div style="display:flex; justify-content:space-between; margin-top:5px;">
+                        <small>${f.name}</small>
+                        <input type="number" onchange="players[${i}].scores['${f.name}']=Number(this.value)" style="width:60px;">
+                    </div>
+                `).join('')}
+            </div>
+        `).join('');
+    }
+
+    function calc() {
+        let best = null;
+        players.forEach(p => {
+            let total = 0;
+            fields.forEach(f => total += (p.scores[f.name] || 0) * f.weight);
+            p.total = total;
+            if(!best || (mode==="high" ? total > best.total : total < best.total)) best = p;
+        });
+        const w = document.getElementById('win');
+        w.style.display = "block";
+        w.innerText = "Gagnant : " + best.name + " (" + best.total + " pts)";
+    }
+</script>
+
+</body>
+</html>
